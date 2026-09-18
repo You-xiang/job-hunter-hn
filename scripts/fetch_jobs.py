@@ -110,7 +110,7 @@ def filter_jobs(jobs):
     return filtered
 
 def format_jobs(jobs):
-    """格式化输出"""
+    """格式化输出 - 纯文字版，无链接"""
     today = datetime.date.today()
     if not jobs:
         return f"湖南省招聘信息汇总（{today}）\n\n今日暂未检索到符合条件的招聘信息，请明天再试。"
@@ -123,10 +123,14 @@ def format_jobs(jobs):
 
     for i, job in enumerate(jobs[:20], 1):
         lines.append(f"{i}. {job['title']}")
+        # 整理 snippet 内容，提取关键信息
         if job.get('snippet'):
-            snippet = job['snippet'][:120]
-            lines.append(f"   {snippet}")
-        lines.append(f"   链接: {job['url']}")
+            snippet = job['snippet']
+            # 清理 snippet，去掉多余空格和特殊字符
+            snippet = re.sub(r'\s+', ' ', snippet).strip()
+            # 如果 snippet 包含有用信息，分行显示
+            if len(snippet) > 20:
+                lines.append(f"   {snippet}")
         lines.append("")
 
     lines.append("提示：以上信息来自公开搜索引擎，请注意甄别信息真实性，警惕黑中介。")
