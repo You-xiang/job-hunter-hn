@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-招聘信息检索脚本 - 湖南省全省 v2
+招聘信息检索脚本 - 湖南省全省 v3
 使用 Bing 搜索引擎检索招聘信息
+修复去重逻辑：按标题去重而非 URL
 """
 import os
 import re
@@ -61,7 +62,7 @@ def search_bing(query, count=10):
 def fetch_jobs():
     """检索招聘信息"""
     all_jobs = []
-    seen_urls = set()
+    seen_titles = set()
 
     search_queries = [
         "湖南 招聘 大专 2026",
@@ -79,9 +80,9 @@ def fetch_jobs():
         results = search_bing(query, count=10)
         print(f"    找到 {len(results)} 条结果")
         for r in results:
-            url_clean = r['url'].split('?')[0].rstrip('/')
-            if url_clean not in seen_urls:
-                seen_urls.add(url_clean)
+            title_clean = r['title'].strip()
+            if title_clean not in seen_titles:
+                seen_titles.add(title_clean)
                 all_jobs.append({
                     'title': r['title'],
                     'url': r['url'],
