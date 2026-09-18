@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-招聘信息检索脚本 - 湖南省全省 v3
-使用 Bing 搜索引擎检索招聘信息
-修复去重逻辑：按标题去重而非 URL
+招聘信息检索脚本 - 湖南省全省 v5
+优化搜索策略：精准搜索词 + 严格过滤无关内容
 """
 import os
 import re
@@ -21,6 +20,22 @@ BLACKLIST_KEYWORDS = [
     "代理", "加盟", "微商", "淘宝刷单", "网络兼职", "游戏代练",
     "彩票", "博彩", "色情", "赌博", "贷款", "信用卡", "炒股",
     "期货", "外汇", "虚拟货币", "区块链招聘"
+]
+
+# 无关内容过滤词
+IRRELEVANT_KEYWORDS = [
+    "百科", "维基百科", "旅游", "景点", "攻略", "历史", "文化",
+    "美食", "酒店", "民宿", "景区", "博物馆", "古迹", "遗址",
+    "省政府", "市政府", "门户", "概况", "行政区划", "人口",
+    "地理", "气候", "交通", "地图", "天气", "房价", "GDP"
+]
+
+# 招聘相关内容过滤词（必须包含至少一个）
+RELEVANT_KEYWORDS = [
+    "招聘", "岗位", "职位", "薪资", "待遇", "福利", "社保",
+    "五险一金", "双休", "加班", "面试", "简历", "HR", "人事",
+    "经理", "主管", "专员", "工程师", "销售", "客服", "运营",
+    "技术", "设计", "财务", "会计", "行政", "文员", "助理"
 ]
 
 def search_bing(query, count=10):
@@ -59,16 +74,34 @@ def search_bing(query, count=10):
         print(f"    Bing 搜索异常: {e}")
     return []
 
+def is_relevant_job(job):
+    """判断是否为相关招聘信息"""
+    text = (job.get('title', '') + ' ' + job.get('snippet', '')).lower()
+    
+    # 排除无关内容
+    for kw in IRRELEVANT_KEYWORDS:
+        if kw in text:
+            return False
+    
+    # 必须包含招聘相关词汇
+    for kw in RELEVANT_KEYWORDS:
+        if kw in text:
+            return True
+    
+    return False
+
 def fetch_jobs():
     """检索招聘信息"""
     all_jobs = []
     seen_titles = set()
 
+    # 优化搜索词：更精准，直接搜招聘网站内容
     search_queries = [
-        "湖南 招聘 大专 2026",
-        "长沙 招聘 大专学历",
-        "湖南 事业单位 招聘 大专",
-        "湖南 企业招聘 大专",
+        "长沙 招聘 大专 岗位 薪资",
+        "湖南 社招 大专 职位 待遇",
+        "湖南 招聘 大专 五险一金",
+        "长沙 招聘 销售 客服 运营",
+        "湖南 招聘 技术 工程师 大专",
         "株洲 湘潭 衡阳 招聘 大专",
         "岳阳 常德 益阳 招聘 大专",
         "郴州 永州 怀化 招聘 大专",
@@ -96,9 +129,12 @@ def filter_jobs(jobs):
     """过滤黑中介和不相关信息"""
     filtered = []
     for job in jobs:
+        # 排除黑中介
         text = job.get('title', '') + ' ' + job.get('snippet', '')
         if any(kw in text for kw in BLACKLIST_KEYWORDS):
             continue
+        
+        # 排除视频网站
         skip = False
         for pattern in ['youtube.com', 'bilibili.com', 'tiktok.com', 'douyin.com']:
             if pattern in job.get('url', ''):
@@ -106,6 +142,11 @@ def filter_jobs(jobs):
                 break
         if skip:
             continue
+        
+        # 只保留相关招聘信息
+        if not is_relevant_job(job):
+            continue
+        
         filtered.append(job)
     return filtered
 
@@ -141,7 +182,7 @@ def main():
     all_jobs = fetch_jobs()
     print(f"  共检索到 {len(all_jobs)} 条原始信息")
 
-    print("[2/3] 过滤黑中介...")
+    print("[2/3] 过滤黑中介和无关内容...")
     filtered = filter_jobs(all_jobs)
     print(f"  过滤后剩余 {len(filtered)} 条")
 
