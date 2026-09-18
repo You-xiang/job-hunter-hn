@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-招聘信息检索脚本 - 长沙/娄底
-使用多个招聘网站 API 和网页抓取
+招聘信息检索脚本 - 湖南省全省
+覆盖长沙/株洲/湘潭/衡阳/邵阳/岳阳/常德/张家界/益阳/郴州/永州/怀化/娄底/湘西
 """
 import os
 import re
@@ -10,8 +10,11 @@ import datetime
 import requests
 from bs4 import BeautifulSoup
 
-# 配置
-CITIES = ["长沙", "娄底"]
+# 湖南省全部地级市
+CITIES = [
+    "长沙", "株洲", "湘潭", "衡阳", "邵阳", "岳阳", "常德",
+    "张家界", "益阳", "郴州", "永州", "怀化", "娄底", "湘西"
+]
 EDUCATION = "大专"
 MIN_SALARY = 3000
 MAX_SALARY = 50000
@@ -19,13 +22,8 @@ MAX_SALARY = 50000
 # 黑中介关键词
 BLACKLIST_KEYWORDS = [
     "刷单", "打字", "手工", "兼职", "在家工作", "日结",
-    "月入过万", "保底", "代理", "加盟", "微商"
-]
-
-# 可信招聘网站
-TRUSTED_SITES = [
-    "zhipin.com", "zhaopin.com", "51job.com", "liepin.com",
-    "lagou.com", "kanzhun.com", "jobui.com", "ganji.com", "58.com"
+    "月入过万", "保底", "代理", "加盟", "微商", "淘宝刷单",
+    "网络兼职", "游戏代练"
 ]
 
 def fetch_from_zhipin(city):
@@ -38,7 +36,6 @@ def fetch_from_zhipin(city):
         }
         resp = requests.get(url, headers=headers, timeout=10)
         if resp.status_code == 200:
-            # 简单解析（实际可能需要更复杂的处理）
             soup = BeautifulSoup(resp.text, 'html.parser')
             job_cards = soup.find_all('div', class_='job-card-wrapper')[:10]
             for card in job_cards:
@@ -89,7 +86,6 @@ def filter_jobs(jobs):
     filtered = []
     for job in jobs:
         title = job.get("title", "")
-        # 检查黑名单
         if any(kw in title for kw in BLACKLIST_KEYWORDS):
             continue
         filtered.append(job)
@@ -101,12 +97,12 @@ def format_jobs(jobs):
         return "今日暂无符合条件的招聘信息"
     
     lines = [f"📋 招聘信息汇总（{datetime.date.today()}）", ""]
-    lines.append(f"📍 城市：{', '.join(CITIES)}")
+    lines.append(f"📍 范围：湖南省全省（{', '.join(CITIES)}）")
     lines.append(f"🎓 学历：{EDUCATION}及以上")
     lines.append(f"✅ 共检索到 {len(jobs)} 条有效信息")
     lines.append("")
     
-    for i, job in enumerate(jobs[:15], 1):
+    for i, job in enumerate(jobs[:20], 1):
         lines.append(f"{i}. {job['title']}")
         lines.append(f"   📍 {job['city']} | 🔗 {job['source']}")
         lines.append(f"   🔗 {job['url']}")
@@ -120,7 +116,6 @@ def main():
     
     for city in CITIES:
         print(f"  检索 {city}...")
-        # 从多个网站获取
         jobs1 = fetch_from_zhipin(city)
         jobs2 = fetch_from_zhaopin(city)
         all_jobs.extend(jobs1)
@@ -135,7 +130,6 @@ def main():
     print("[3/3] 格式化输出...")
     content = format_jobs(filtered)
     
-    # 保存到文件
     output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs")
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, "jobs.txt")
