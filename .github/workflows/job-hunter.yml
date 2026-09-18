@@ -2,6 +2,7 @@ name: Job Hunter Daily
 
 on:
   schedule:
+    # 北京时间 17:00 = UTC 9:00
     - cron: '0 9 * * *'
   workflow_dispatch:
 
@@ -17,7 +18,7 @@ jobs:
       with:
         python-version: '3.10'
     - name: Install deps
-      run: pip install duckduckgo-search requests
+      run: pip install requests beautifulsoup4
     - name: Fetch jobs
       run: python scripts/fetch_jobs.py
     - name: Push to WeChat
