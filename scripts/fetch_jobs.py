@@ -1,101 +1,91 @@
 # -*- coding: utf-8 -*-
-"""招聘信息检索：长沙/娄底，大专及以上"""
+"""招聘信息检索：长沙/娄底，大专及以上 - 改进版"""
 import os
 import re
 import datetime
 import requests
-from bs4 import BeautifulSoup
 
 CITIES = ["长沙", "娄底"]
 EDUCATION = "大专"
 
-# 黑中介特征关键词（严格过滤）
+# 黑中介特征关键词
 BLACKLIST_KEYWORDS = [
     "刷单", "打字员", "手工活", "网络兼职", "游戏代练",
-    "在家工作", "日结", "无需经验不限学历", "代理加盟",
-    "微商", "淘宝刷单", "兼职打字"
+    "在家工作", "日结", "代理加盟", "微商", "淘宝刷单"
 ]
 
-# 可信招聘网站域名（大幅扩充）
-TRUSTED_DOMAINS = [
-    "zhaopin.com", "51job.com", "liepin.com", "lagou.com",
-    "boss.com", "kanzhun.com", "jobui.com", "ganji.com",
-    "58.com", "jobs.cn", "zhaopin.cn", "hrsalon.cn",
-    "hunanedu.cn", "hunanrc.com", "csrc.gov", "loudi.gov",
-    "changsha.gov", "job.com", "recruit.com", "talent.com",
-    "zpwanted.com", "liepin.com", "zhipin.com", "kanzhun.com",
-    "lagou.com", "51job.com", "zhaopin.com", "ganji.com",
-    "dajie.com", "jobui.com", "kuaidi100.com", "58.com"
-]
-
-def search_jobs(city, education):
-    """通过多个渠道搜索招聘信息"""
+def search_bing(city, education):
+    """使用 Bing 搜索"""
     jobs = []
-    
-    # 渠道1: 百度搜索
-    query = f"{city} {education} 招聘 2026"
-    url = f"https://www.baidu.com/s?wd={query}&rn=20"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    query = f"{city} {education} 招聘 site:zhipin.com OR site:zhaopin.com OR site:51job.com"
+    url = f"https://cn.bing.com/search?q={requests.utils.quote(query)}&count=20"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
     
     try:
         resp = requests.get(url, headers=headers, timeout=15)
-        soup = BeautifulSoup(resp.text, 'html.parser')
+        # 提取标题和链接
+        pattern = r'<h2><a[^>]+href="([^"]+)"[^>]*>([^<]+)</a></h2>'
+        matches = re.findall(pattern, resp.text)
         
-        for item in soup.select('.result'):
-            title_tag = item.select_one('h3 a')
-            if not title_tag:
-                continue
-            title = title_tag.get_text(strip=True)
-            link = title_tag.get('href', '')
-            
-            # 检查是否包含招聘相关
-            if not any(kw in title for kw in ['招聘', '职位', '岗位', '人才', '求职']):
-                continue
-            
-            # 检查黑名单
+        for link, title in matches[:15]:
+            # 过滤黑名单
             if any(kw in title for kw in BLACKLIST_KEYWORDS):
                 continue
             
             # 提取域名
-            domain = ''
-            try:
-                if 'http' in link:
-                    domain = link.split('/')[2]
-            except:
-                pass
+            domain = ""
+            if "http" in link:
+                domain = link.split("/")[2] if len(link.split("/")) > 2 else ""
+            
+            jobs.append({
+                "title": title.strip(),
+                "url": link,
+                "city": city,
+                "source": domain
+            })
+    except Exception as e:
+        print(f"[warn] Bing 搜索 {city} 失败: {e}")
+    
+    return jobs
+
+def search_sogou(city, education):
+    """使用搜狗搜索"""
+    jobs = []
+    query = f"{city} {education} 招聘"
+    url = f"https://www.sogou.com/web?query={requests.utils.quote(query)}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        # 提取结果
+        pattern = r'<h3[^>]*>.*?<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>'
+        matches = re.findall(pattern, resp.text, re.DOTALL)
+        
+        for link, title_html in matches[:10]:
+            # 清理 HTML 标签
+            title = re.sub(r'<[^>]+>', '', title_html).strip()
+            
+            if not any(kw in title for kw in ['招聘', '职位', '岗位', '人才']):
+                continue
+            if any(kw in title for kw in BLACKLIST_KEYWORDS):
+                continue
+            
+            domain = ""
+            if "http" in link:
+                domain = link.split("/")[2] if len(link.split("/")) > 2 else ""
             
             jobs.append({
                 "title": title,
                 "url": link,
                 "city": city,
-                "source": domain or "百度"
+                "source": domain or "搜狗"
             })
     except Exception as e:
-        print(f"[warn] 百度搜索 {city} 失败: {e}")
-    
-    # 渠道2: 直接访问主流招聘网站搜索页
-    try:
-        # Boss直聘搜索
-        boss_url = f"https://www.zhipin.com/web/geek/job?query={city}+{education}&city=101250100"
-        resp = requests.get(boss_url, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            for item in soup.select('.job-card-wrapper')[:10]:
-                title_tag = item.select_one('.job-name')
-                if title_tag:
-                    title = title_tag.get_text(strip=True)
-                    link_tag = item.select_one('a')
-                    link = link_tag.get('href', '') if link_tag else ''
-                    if link and not link.startswith('http'):
-                        link = 'https://www.zhipin.com' + link
-                    jobs.append({
-                        "title": f"[Boss直聘] {title}",
-                        "url": link,
-                        "city": city,
-                        "source": "zhipin.com"
-                    })
-    except Exception as e:
-        print(f"[warn] Boss直聘搜索失败: {e}")
+        print(f"[warn] 搜狗搜索 {city} 失败: {e}")
     
     return jobs
 
@@ -103,7 +93,7 @@ def deduplicate(jobs):
     seen = set()
     unique = []
     for job in jobs:
-        key = job['title'][:20]  # 用前20字符去重
+        key = job['title'][:20]
         if key not in seen:
             seen.add(key)
             unique.append(job)
@@ -131,11 +121,16 @@ def format_jobs(jobs):
 def main():
     print("[1/3] 检索招聘信息...")
     all_jobs = []
+    
     for city in CITIES:
         print(f"  检索 {city}...")
-        jobs = search_jobs(city, EDUCATION)
-        print(f"    找到 {len(jobs)} 条")
-        all_jobs.extend(jobs)
+        # 使用多个搜索引擎
+        jobs1 = search_bing(city, EDUCATION)
+        print(f"    Bing: {len(jobs1)} 条")
+        jobs2 = search_sogou(city, EDUCATION)
+        print(f"    搜狗: {len(jobs2)} 条")
+        all_jobs.extend(jobs1)
+        all_jobs.extend(jobs2)
     
     print(f"[2/3] 去重处理...")
     unique = deduplicate(all_jobs)
