@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 招聘信息检索脚本 - 湖南省全省
-覆盖长沙/株洲/湘潭/衡阳/邵阳/岳阳/常德/张家界/益阳/郴州/永州/怀化/娄底/湘西
+使用湖南人才网、长沙人才网等政府网站
 """
 import os
 import re
@@ -9,6 +9,7 @@ import json
 import datetime
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import quote
 
 # 湖南省全部地级市
 CITIES = [
@@ -16,8 +17,6 @@ CITIES = [
     "张家界", "益阳", "郴州", "永州", "怀化", "娄底", "湘西"
 ]
 EDUCATION = "大专"
-MIN_SALARY = 3000
-MAX_SALARY = 50000
 
 # 黑中介关键词
 BLACKLIST_KEYWORDS = [
@@ -26,59 +25,103 @@ BLACKLIST_KEYWORDS = [
     "网络兼职", "游戏代练"
 ]
 
-def fetch_from_zhipin(city):
-    """从 Boss 直聘获取"""
+def fetch_from_hunanrc():
+    """从湖南人才网获取"""
     jobs = []
     try:
-        url = f"https://www.zhipin.com/web/geek/job?query=&city=101250100"
+        url = "http://www.hunanrc.com/job/list"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        resp = requests.get(url, headers=headers, timeout=10)
+        resp = requests.get(url, headers=headers, timeout=15)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, 'html.parser')
-            job_cards = soup.find_all('div', class_='job-card-wrapper')[:10]
-            for card in job_cards:
-                title_elem = card.find('span', class_='job-name')
-                if title_elem:
-                    title = title_elem.get_text(strip=True)
-                    link = f"https://www.zhipin.com{card.find('a')['href']}"
+            # 查找职位列表
+            job_items = soup.find_all('div', class_='job-item')[:20]
+            for item in job_items:
+                title_tag = item.find('a', class_='job-title')
+                if title_tag:
+                    title = title_tag.get_text(strip=True)
+                    link = title_tag.get('href', '')
+                    if not link.startswith('http'):
+                        link = 'http://www.hunanrc.com' + link
+                    
+                    city_tag = item.find('span', class_='job-city')
+                    city = city_tag.get_text(strip=True) if city_tag else "湖南"
+                    
                     jobs.append({
                         "title": title,
                         "url": link,
                         "city": city,
-                        "source": "Boss直聘"
+                        "source": "湖南人才网"
                     })
     except Exception as e:
-        print(f"Boss直聘获取失败: {e}")
+        print(f"湖南人才网获取失败: {e}")
     return jobs
 
-def fetch_from_zhaopin(city):
-    """从智联招聘获取"""
+def fetch_from_changsharc():
+    """从长沙人才网获取"""
     jobs = []
     try:
-        url = f"https://sou.zhaopin.com/?jl=681&kw=&p=1"
+        url = "http://www.csrcsc.com/job/list"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        resp = requests.get(url, headers=headers, timeout=10)
+        resp = requests.get(url, headers=headers, timeout=15)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, 'html.parser')
-            job_items = soup.find_all('div', class_='joblist-box__item')[:10]
+            job_items = soup.find_all('div', class_='job-item')[:20]
             for item in job_items:
-                title_elem = item.find('p', class_='iteminfo__line1__jobname')
-                if title_elem:
-                    title = title_elem.get_text(strip=True)
-                    link_elem = item.find('a')
-                    link = link_elem['href'] if link_elem else ""
+                title_tag = item.find('a', class_='job-title')
+                if title_tag:
+                    title = title_tag.get_text(strip=True)
+                    link = title_tag.get('href', '')
+                    if not link.startswith('http'):
+                        link = 'http://www.csrcsc.com' + link
+                    
                     jobs.append({
                         "title": title,
                         "url": link,
-                        "city": city,
-                        "source": "智联招聘"
+                        "city": "长沙",
+                        "source": "长沙人才网"
                     })
     except Exception as e:
-        print(f"智联招聘获取失败: {e}")
+        print(f"长沙人才网获取失败: {e}")
+    return jobs
+
+def fetch_from_gov_sites():
+    """从政府招聘网站获取"""
+    jobs = []
+    gov_urls = [
+        ("湖南省人社厅", "http://rst.hunan.gov.cn/rst/xxgk/zpxx/"),
+        ("长沙人社局", "http://rsj.changsha.gov.cn/zpxx/"),
+    ]
+    
+    for name, url in gov_urls:
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+            resp = requests.get(url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                # 查找招聘相关链接
+                links = soup.find_all('a', href=True)
+                for link in links[:10]:
+                    title = link.get_text(strip=True)
+                    href = link.get('href', '')
+                    if any(kw in title for kw in ['招聘', '公告', '人才']):
+                        if not href.startswith('http'):
+                            href = url.rstrip('/') + '/' + href.lstrip('/')
+                        jobs.append({
+                            "title": title,
+                            "url": href,
+                            "city": "湖南",
+                            "source": name
+                        })
+        except Exception as e:
+            print(f"{name}获取失败: {e}")
+    
     return jobs
 
 def filter_jobs(jobs):
@@ -114,12 +157,20 @@ def main():
     print("[1/3] 检索招聘信息...")
     all_jobs = []
     
-    for city in CITIES:
-        print(f"  检索 {city}...")
-        jobs1 = fetch_from_zhipin(city)
-        jobs2 = fetch_from_zhaopin(city)
-        all_jobs.extend(jobs1)
-        all_jobs.extend(jobs2)
+    print("  检索湖南人才网...")
+    jobs1 = fetch_from_hunanrc()
+    print(f"    湖南人才网: {len(jobs1)} 条")
+    all_jobs.extend(jobs1)
+    
+    print("  检索长沙人才网...")
+    jobs2 = fetch_from_changsharc()
+    print(f"    长沙人才网: {len(jobs2)} 条")
+    all_jobs.extend(jobs2)
+    
+    print("  检索政府招聘网站...")
+    jobs3 = fetch_from_gov_sites()
+    print(f"    政府网站: {len(jobs3)} 条")
+    all_jobs.extend(jobs3)
     
     print(f"  共检索到 {len(all_jobs)} 条原始信息")
     
